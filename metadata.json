@@ -1,0 +1,7 @@
+{
+  "name": "The Lady's Wardrobe Stylist",
+  "description": "An elegant AI-powered fashion consultant that organizes your wardrobe and curates sophisticated outfits based on timeless elegance and modern trends.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
