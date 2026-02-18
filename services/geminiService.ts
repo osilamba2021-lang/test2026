@@ -2,13 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ClothingItem, InspirationImage, OutfitSuggestion, GroundingSource, StyleProfile, UserAnalysis } from "../types";
 
-// Note: process.env.API_KEY is handled by the platform
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 /**
  * Analyzes a user's photo to determine their body architecture
  */
 export const analyzeBodyArchitecture = async (base64Image: string): Promise<UserAnalysis> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const imageData = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
   
   const prompt = `
@@ -63,6 +61,7 @@ export const generateOutfits = async (
   profile: StyleProfile,
   pinterestUrl?: string
 ): Promise<OutfitSuggestion[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const wardrobeParts = wardrobe.map((item) => ({
     inlineData: {

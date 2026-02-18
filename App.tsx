@@ -290,7 +290,7 @@ const App: React.FC = () => {
                       </div>
                       <div className="col-span-2 pt-4 border-t border-white/10">
                         <span className="text-[9px] font-black uppercase tracking-widest opacity-60 block mb-1">Stylist Recommendation</span>
-                        <p className="italic text-sm leading-relaxed text-amber-200">"{profile.aiAnalysis.suggestedFocus}"</p>
+                        <p className="italic text-sm leading-relaxed text-amber-200">{`"${profile.aiAnalysis.suggestedFocus}"`}</p>
                       </div>
                     </div>
                   </div>
@@ -404,7 +404,7 @@ const App: React.FC = () => {
               {styling.isGenerating ? (
                 <span className="flex items-center justify-center gap-4">
                   <i className="fa-solid fa-circle-notch animate-spin"></i>
-                  {`Syncing Architecture (Est. < 30s)...`}
+                  Syncing Architecture...
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-4">
