@@ -63,7 +63,11 @@ export const generateOutfits = async (
 ): Promise<OutfitSuggestion[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const wardrobeParts = wardrobe.map((item) => ({
+  const wardrobeParts = wardrobe.map((item, index) => ({
+    text: `ITEM #${index}: Name: ${item.name}, Category: ${item.category}, Color: ${item.color || 'Unspecified'}, Fit: ${item.fit || 'Standard'}, Type: ${item.classification || 'Basic'}, Style: ${item.style || 'Classic'}`
+  }));
+
+  const wardrobeImages = wardrobe.map((item) => ({
     inlineData: {
       mimeType: "image/png",
       data: item.image.includes(',') ? item.image.split(',')[1] : item.image
@@ -77,6 +81,8 @@ export const generateOutfits = async (
     }
   }));
 
+  const targetPinterest = pinterestUrl || profile.pinterestProfile;
+
   const architectureContext = profile.aiAnalysis 
     ? `VISUAL ARCHITECTURE:
        - Shape: ${profile.aiAnalysis.bodyShape}
@@ -88,20 +94,35 @@ export const generateOutfits = async (
        - Height: ${profile.height || 'Average'}`;
 
   const systemInstruction = `
-    You are "The Lady's Personal Stylist". 
-    Create THREE outfit options from the WARDROBE provided.
+    You are "The Lady's Personal Stylist", a world-class fashion curator. 
+    You strictly adhere to "The Lady's Guide to Fashion", traditional etiquette, and high-fashion protocols.
     
+    FASHION PROTOCOL & RULES:
+    1.  **Dress Code Adherence**:
+        - **White Tie**: Floor-length ball gowns ONLY. Gloves required. No watches.
+        - **Black Tie**: Floor-length gowns or very formal cocktail dresses. 
+        - **Cocktail**: Knee-length or midi dresses. Heels required.
+        - **Smart Casual**: Polished separates. No distressed denim.
+    2.  **The Rule of Thirds**: Enforce the golden ratio in styling (1/3 to 2/3 visual split).
+    3.  **Basics & Statements**: Never pair two loud statement pieces unless doing "Maximalist". Typically mix 1 statement with basics.
+    4.  **Color Harmony**: Use the 3-color rule or tonal dressing. Shoes must complement the hemline.
+
+    ARCHITECTURAL FLATTERY:
+    - You MUST balance the user's specific proportions:
     ${architectureContext}
 
-    STYLE PREFERENCES:
+    USER STYLE DNA:
     - Aesthetic: ${profile.aesthetic || 'Sophisticated'}
+    - Signature Colors: ${profile.signatureColors}
     - Forbidden: ${profile.forbidden || 'None'}
 
-    FLATTERY LOGIC:
-    - Balance user's proportions using "The Lady's Guide to Proportion".
+    ${targetPinterest ? `PINTEREST ANALYSIS: Access and analyze the visual style from this Pinterest link: ${targetPinterest}. If it is a full account/profile, identify the recurring themes, color palettes, and silhouettes across all their boards to define their personal brand.` : ""}
+
+    TASK:
+    Create THREE outfit options from the WARDROBE provided to fit the request perfectly.
     ${prompt}
 
-    Return a JSON block with "outfits" array.
+    Return a JSON block with "outfits" array. Reference items by their # index.
   `;
 
   try {
@@ -111,11 +132,13 @@ export const generateOutfits = async (
         { 
           role: 'user', 
           parts: [
-            ...wardrobeParts, 
+            ...wardrobeParts,
+            { text: "--- WARDROBE IMAGES ---" },
+            ...wardrobeImages, 
             { text: "--- END OF WARDROBE ---" },
             ...inspirationParts,
             { text: "--- END OF INSPIRATION ---" },
-            { text: "Please generate outfits based on my wardrobe and profile context." } 
+            { text: "Synthesize my daily ritual request. Ensure strict adherence to fashion rules." } 
           ] 
         }
       ],
@@ -133,12 +156,12 @@ export const generateOutfits = async (
                 properties: {
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
-                  fashionGuideline: { type: Type.STRING },
+                  fashionGuideline: { type: Type.STRING, description: "Cite the specific fashion rule applied (e.g. 'Rule of Thirds', 'Black Tie Protocol')" },
                   trendFactor: { type: Type.STRING },
                   identityMatch: { type: Type.STRING },
                   proportionNote: { type: Type.STRING },
                   type: { type: Type.STRING, enum: ["Classic", "Practical", "Bold"] },
-                  items: { type: Type.ARRAY, items: { type: Type.STRING } }
+                  items: { type: Type.ARRAY, items: { type: Type.STRING, description: "Index of the item in the list provided" } }
                 },
                 required: ["title", "description", "fashionGuideline", "trendFactor", "identityMatch", "proportionNote", "type", "items"]
               }
@@ -160,13 +183,13 @@ export const generateOutfits = async (
     return data.outfits.map((outfit: any) => ({
       ...outfit,
       sources,
-      items: outfit.items.map((idx: string) => {
-        const n = parseInt(idx);
+      items: outfit.items.map((idxStr: string) => {
+        const n = parseInt(idxStr);
         return wardrobe[n]?.id;
       }).filter(Boolean)
     }));
   } catch (error) {
     console.error("Gemini Error:", error);
-    throw new Error("Styling failed. Please ensure you have items in your vault.");
+    throw new Error("Styling failed. Check your wardrobe metadata.");
   }
 };

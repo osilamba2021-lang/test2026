@@ -1,11 +1,17 @@
 
 export type ClothingCategory = 'Tops' | 'Bottoms' | 'Dresses' | 'Outerwear' | 'Shoes' | 'Accessories';
+export type ClothingFit = 'Tailored' | 'Oversized' | 'Relaxed' | 'Slim' | 'Petite';
+export type ClothingClassification = 'Basic' | 'Statement';
 
 export interface ClothingItem {
   id: string;
   image: string; // Base64
   category: ClothingCategory;
   name: string;
+  color?: string;
+  fit?: ClothingFit;
+  classification?: ClothingClassification;
+  style?: string; // e.g. "Minimalist", "Bohemian"
 }
 
 export interface InspirationImage {
@@ -27,6 +33,7 @@ export interface StyleProfile {
   signatureColors: string;
   bodyType: string;
   height: string;
+  pinterestProfile?: string; // New: Persistent Pinterest link
   analysisPhoto?: string; // Base64
   aiAnalysis?: UserAnalysis;
 }
@@ -46,6 +53,19 @@ export interface OutfitSuggestion {
   identityMatch: string; 
   proportionNote: string; 
   sources?: GroundingSource[];
+}
+
+export interface OutfitRating {
+  comfort: number; // 1-5
+  style: number; // 1-5
+  notes?: string;
+}
+
+export interface SavedOutfit extends OutfitSuggestion {
+  id: string;
+  timestamp: number;
+  rating?: OutfitRating;
+  occasionCategory: string; // e.g., "Work", "Date Night", "Gala", etc.
 }
 
 export interface StylingState {
