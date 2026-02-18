@@ -12,6 +12,8 @@ export interface ClothingItem {
   fit?: ClothingFit;
   classification?: ClothingClassification;
   style?: string; // e.g. "Minimalist", "Bohemian"
+  material?: string; // e.g. "Silk", "Denim"
+  lastWorn?: number; // Timestamp
 }
 
 export interface InspirationImage {
@@ -36,6 +38,7 @@ export interface StyleProfile {
   pinterestProfile?: string;
   analysisPhoto?: string; // Base64
   aiAnalysis?: UserAnalysis;
+  laundryCycle?: number; // Days between laundry
 }
 
 export interface GroundingSource {
@@ -68,6 +71,16 @@ export interface SavedOutfit extends OutfitSuggestion {
   occasionCategory: string; // e.g., "Work", "Date Night", "Gala", etc.
 }
 
+export interface CalendarEvent {
+  id: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  description?: string;
+  outfitId?: string; // Link to SavedOutfit
+  source?: 'local' | 'google';
+  googleEventId?: string;
+}
+
 export interface StylingState {
   isGenerating: boolean;
   suggestions: OutfitSuggestion[] | null;
@@ -84,12 +97,22 @@ export interface DailyContext {
   pinterestUrl: string;
 }
 
+export interface GoogleCalendarConfig {
+  clientId: string;
+  apiKey: string;
+  isConnected: boolean;
+}
+
 export interface UserData {
-  username: string;
+  email: string;    // Unique Identifier
+  password: string; // Simple auth
+  name: string;     // Display Name
   wardrobe: ClothingItem[];
   inspiration: InspirationImage[];
   profile: StyleProfile;
   context: DailyContext;
   savedOutfits: SavedOutfit[];
+  calendar: CalendarEvent[];
+  googleCalendar?: GoogleCalendarConfig;
   lastActive: number;
 }
