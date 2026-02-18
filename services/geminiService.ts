@@ -1,8 +1,60 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ClothingItem, InspirationImage, OutfitSuggestion, GroundingSource, StyleProfile } from "../types";
+import { ClothingItem, InspirationImage, OutfitSuggestion, GroundingSource, StyleProfile, UserAnalysis } from "../types";
 
+// Note: process.env.API_KEY is handled by the platform
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+/**
+ * Analyzes a user's photo to determine their body architecture
+ */
+export const analyzeBodyArchitecture = async (base64Image: string): Promise<UserAnalysis> => {
+  const imageData = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+  
+  const prompt = `
+    Analyze this individual's body architecture for high-end fashion styling.
+    Identify:
+    1. Body Shape (e.g. Hourglass, Pear, Rectangle, Inverted Triangle, Apple).
+    2. Proportions (e.g. Long torso/Short legs, High hip, Wide shoulders).
+    3. Height Estimate (e.g. Petite, Average, Tall).
+    4. Suggested Fashion Focus (What should they highlight or balance?).
+
+    Return ONLY a JSON object.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: "image/png", data: imageData } },
+            { text: prompt }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            bodyShape: { type: Type.STRING },
+            proportions: { type: Type.STRING },
+            suggestedFocus: { type: Type.STRING },
+            heightEstimate: { type: Type.STRING }
+          },
+          required: ["bodyShape", "proportions", "suggestedFocus", "heightEstimate"]
+        }
+      }
+    });
+
+    return JSON.parse(response.text || '{}');
+  } catch (error) {
+    console.error("Analysis Error:", error);
+    throw new Error("Unable to analyze architecture. Ensure photo is clear.");
+  }
+};
 
 export const generateOutfits = async (
   wardrobe: ClothingItem[], 
@@ -15,54 +67,42 @@ export const generateOutfits = async (
   const wardrobeParts = wardrobe.map((item) => ({
     inlineData: {
       mimeType: "image/png",
-      data: item.image.split(',')[1]
+      data: item.image.includes(',') ? item.image.split(',')[1] : item.image
     }
   }));
 
   const inspirationParts = inspiration.map(item => ({
     inlineData: {
       mimeType: "image/png",
-      data: item.image.split(',')[1]
+      data: item.image.includes(',') ? item.image.split(',')[1] : item.image
     }
   }));
 
-  const searchContext = pinterestUrl 
-    ? `\nAdditionally, research the current aesthetic and fashion trends on this Pinterest board: ${pinterestUrl}. Replicate this board's "Visual DNA" using the user's wardrobe.`
-    : "";
+  const architectureContext = profile.aiAnalysis 
+    ? `VISUAL ARCHITECTURE:
+       - Shape: ${profile.aiAnalysis.bodyShape}
+       - Proportions: ${profile.aiAnalysis.proportions}
+       - Height: ${profile.aiAnalysis.heightEstimate}
+       - Stylist Focus: ${profile.aiAnalysis.suggestedFocus}`
+    : `PHYSICAL PROFILE:
+       - Shape: ${profile.bodyType || 'Balanced'}
+       - Height: ${profile.height || 'Average'}`;
 
   const systemInstruction = `
     You are "The Lady's Personal Stylist". 
-    Your primary goal is to provide THREE distinct outfit options from the user's WARDROBE that strictly adhere to their PERMANENT STYLE PROFILE.
+    Create THREE outfit options from the WARDROBE provided.
     
-    PERMANENT STYLE PROFILE:
-    - Core Aesthetic: ${profile.aesthetic || 'Sophisticated and Timeless'}
-    - Preferred Silhouettes: ${profile.silhouettes || 'Tailored and Balanced'}
-    - Signature Colors: ${profile.signatureColors || 'Neutral and Cohesive'}
-    - Forbidden Styles/Items: ${profile.forbidden || 'None'}
+    ${architectureContext}
 
-    Categories:
-    1. "Classic": Elegant and timeless, the purest form of their profile.
-    2. "Practical": Weather and comfort-optimized, but still stylish.
-    3. "Bold": Fashion-forward, experimenting with their profile in new ways.
+    STYLE PREFERENCES:
+    - Aesthetic: ${profile.aesthetic || 'Sophisticated'}
+    - Forbidden: ${profile.forbidden || 'None'}
 
-    ${searchContext}
+    FLATTERY LOGIC:
+    - Balance user's proportions using "The Lady's Guide to Proportion".
+    ${prompt}
 
-    You MUST return a JSON block within your response.
-    Format:
-    {
-      "outfits": [
-        {
-          "title": "Name",
-          "description": "Explanation",
-          "fashionGuideline": "Advice",
-          "trendFactor": "Trend info",
-          "identityMatch": "Briefly explain how this look respects the user's permanent profile preferences.",
-          "type": "Classic",
-          "items": ["0", "2"]
-        }
-      ]
-    }
-    The "items" array must contain indices of the provided WARDROBE images.
+    Return a JSON block with "outfits" array.
   `;
 
   try {
@@ -76,7 +116,7 @@ export const generateOutfits = async (
             { text: "--- END OF WARDROBE ---" },
             ...inspirationParts,
             { text: "--- END OF INSPIRATION ---" },
-            { text: prompt } 
+            { text: "Please generate outfits based on my wardrobe and profile context." } 
           ] 
         }
       ],
@@ -97,10 +137,11 @@ export const generateOutfits = async (
                   fashionGuideline: { type: Type.STRING },
                   trendFactor: { type: Type.STRING },
                   identityMatch: { type: Type.STRING },
+                  proportionNote: { type: Type.STRING },
                   type: { type: Type.STRING, enum: ["Classic", "Practical", "Bold"] },
                   items: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
-                required: ["title", "description", "fashionGuideline", "trendFactor", "identityMatch", "type", "items"]
+                required: ["title", "description", "fashionGuideline", "trendFactor", "identityMatch", "proportionNote", "type", "items"]
               }
             }
           },
@@ -111,7 +152,7 @@ export const generateOutfits = async (
 
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     const sources: GroundingSource[] = groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || "Fashion Source",
+      title: chunk.web?.title || "Fashion Trend",
       uri: chunk.web?.uri || "#"
     })).filter((s: any) => s.uri !== "#") || [];
 
@@ -127,6 +168,6 @@ export const generateOutfits = async (
     }));
   } catch (error) {
     console.error("Gemini Error:", error);
-    throw new Error("Our stylist is gathering current trends. Please try again.");
+    throw new Error("Styling failed. Please ensure you have items in your vault.");
   }
 };

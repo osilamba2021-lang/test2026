@@ -13,11 +13,22 @@ export interface InspirationImage {
   image: string; // Base64
 }
 
+export interface UserAnalysis {
+  bodyShape: string;
+  proportions: string;
+  suggestedFocus: string; // e.g. "Highlight waist", "Elongate legs"
+  heightEstimate: string;
+}
+
 export interface StyleProfile {
   aesthetic: string;
   silhouettes: string;
   forbidden: string;
   signatureColors: string;
+  bodyType: string;
+  height: string;
+  analysisPhoto?: string; // Base64
+  aiAnalysis?: UserAnalysis;
 }
 
 export interface GroundingSource {
@@ -32,7 +43,8 @@ export interface OutfitSuggestion {
   fashionGuideline: string;
   trendFactor: string;
   type: 'Classic' | 'Practical' | 'Bold';
-  identityMatch: string; // Explains how it matches the user's StyleProfile
+  identityMatch: string; 
+  proportionNote: string; 
   sources?: GroundingSource[];
 }
 
