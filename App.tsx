@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { ClothingItem, ClothingCategory, ClothingFit, ClothingClassification, StylingState, InspirationImage, StyleProfile, UserAnalysis, SavedOutfit, OutfitSuggestion } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { ClothingItem, ClothingCategory, ClothingFit, ClothingClassification, StylingState, InspirationImage, StyleProfile, UserAnalysis, SavedOutfit, OutfitSuggestion, DailyContext, UserData } from './types';
 import ClothingCard from './components/ClothingCard';
 import { generateOutfits, analyzeBodyArchitecture } from './services/geminiService';
 
@@ -9,17 +9,14 @@ const FITS: ClothingFit[] = ['Tailored', 'Oversized', 'Relaxed', 'Slim', 'Petite
 const CLASSIFICATIONS: ClothingClassification[] = ['Basic', 'Statement'];
 const OCCASIONS_DEFAULT = ['Daily', 'Work', 'Date Night', 'Event', 'Travel'];
 
-interface DailyContext {
-  event: string;
-  weather: string;
-  location: string;
-  vibe: string;
-  color: string;
-  comfort: number;
-  pinterestUrl: string;
-}
-
 const App: React.FC = () => {
+  // --- Auth State ---
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [users, setUsers] = useState<string[]>([]);
+  const [authMode, setAuthMode] = useState<'login' | 'app'>('login');
+  const [loginInput, setLoginInput] = useState('');
+  
+  // --- App Data State ---
   const [wardrobe, setWardrobe] = useState<ClothingItem[]>([]);
   const [inspiration, setInspiration] = useState<InspirationImage[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
@@ -78,6 +75,37 @@ const App: React.FC = () => {
   const [greeting, setGreeting] = useState('');
   const [lookbookFilter, setLookbookFilter] = useState('All');
 
+  // --- Initialization & Auth Logic ---
+
+  useEffect(() => {
+    // Load list of users
+    const storedUsers = localStorage.getItem('ladys_users_list');
+    if (storedUsers) {
+      setUsers(JSON.parse(storedUsers));
+    }
+    
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting('Good Morning');
+    else if (hour < 17) setGreeting('Good Afternoon');
+    else setGreeting('Good Evening');
+  }, []);
+
+  // Save data whenever state changes, IF a user is logged in
+  useEffect(() => {
+    if (currentUser) {
+      const data: UserData = {
+        username: currentUser,
+        wardrobe,
+        inspiration,
+        profile,
+        context,
+        savedOutfits,
+        lastActive: Date.now()
+      };
+      localStorage.setItem(`ladys_data_${currentUser}`, JSON.stringify(data));
+    }
+  }, [wardrobe, inspiration, profile, context, savedOutfits, currentUser]);
+
   const detectLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async (position) => {
@@ -98,43 +126,109 @@ const App: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    try {
-      const savedWardrobe = localStorage.getItem('ladys_wardrobe');
-      const savedInspo = localStorage.getItem('ladys_inspo');
-      const savedContext = localStorage.getItem('ladys_context');
-      const savedProfile = localStorage.getItem('ladys_profile');
-      const savedLookbook = localStorage.getItem('ladys_lookbook');
-      
-      if (savedWardrobe) setWardrobe(JSON.parse(savedWardrobe));
-      if (savedInspo) setInspiration(JSON.parse(savedInspo));
-      if (savedLookbook) setSavedOutfits(JSON.parse(savedLookbook));
-      if (savedContext) {
-        const parsed = JSON.parse(savedContext);
-        setContext(prev => ({ ...prev, ...parsed }));
-        if (!parsed.location) detectLocation();
-      } else {
-        detectLocation();
-      }
-      if (savedProfile) setProfile(JSON.parse(savedProfile));
-    } catch (e) {
-      console.warn("Storage restoration failed", e);
+  const loadUser = (username: string) => {
+    const dataString = localStorage.getItem(`ladys_data_${username}`);
+    if (dataString) {
+      const data: UserData = JSON.parse(dataString);
+      setWardrobe(data.wardrobe || []);
+      setInspiration(data.inspiration || []);
+      setProfile(data.profile || { aesthetic: '', silhouettes: '', forbidden: '', signatureColors: '', bodyType: '', height: '', pinterestProfile: '' });
+      setContext(data.context || { event: '', weather: '', location: '', vibe: '', color: '', comfort: 5, pinterestUrl: '' });
+      setSavedOutfits(data.savedOutfits || []);
+    } else {
+      // New user default state
+      setWardrobe([]);
+      setInspiration([]);
+      setSavedOutfits([]);
+      setProfile({ aesthetic: '', silhouettes: '', forbidden: '', signatureColors: '', bodyType: '', height: '', pinterestProfile: '' });
+      setContext({ event: '', weather: '', location: '', vibe: '', color: '', comfort: 5, pinterestUrl: '' });
       detectLocation();
     }
+    setCurrentUser(username);
+    setAuthMode('app');
+  };
 
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good Morning');
-    else if (hour < 17) setGreeting('Good Afternoon');
-    else setGreeting('Good Evening');
-  }, []);
+  const handleLogin = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!loginInput.trim()) return;
+    const username = loginInput.trim();
+    
+    if (!users.includes(username)) {
+      const newUsers = [...users, username];
+      setUsers(newUsers);
+      localStorage.setItem('ladys_users_list', JSON.stringify(newUsers));
+    }
+    loadUser(username);
+  };
 
-  useEffect(() => {
-    localStorage.setItem('ladys_wardrobe', JSON.stringify(wardrobe));
-    localStorage.setItem('ladys_inspo', JSON.stringify(inspiration));
-    localStorage.setItem('ladys_context', JSON.stringify(context));
-    localStorage.setItem('ladys_profile', JSON.stringify(profile));
-    localStorage.setItem('ladys_lookbook', JSON.stringify(savedOutfits));
-  }, [wardrobe, inspiration, context, profile, savedOutfits]);
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setAuthMode('login');
+    setLoginInput('');
+    setStyling({ isGenerating: false, suggestions: null, error: null });
+  };
+
+  const handleExportData = () => {
+    if (!currentUser) return;
+    const data: UserData = {
+      username: currentUser,
+      wardrobe,
+      inspiration,
+      profile,
+      context,
+      savedOutfits,
+      lastActive: Date.now()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ladys_wardrobe_${currentUser}_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data: UserData = JSON.parse(event.target?.result as string);
+        if (data.username && data.wardrobe) {
+          // If in login mode, just import to storage and add user
+          // If in app mode, merge or overwrite? Let's overwrite current session for now
+          if (authMode === 'login') {
+            localStorage.setItem(`ladys_data_${data.username}`, JSON.stringify(data));
+            if (!users.includes(data.username)) {
+               const newUsers = [...users, data.username];
+               setUsers(newUsers);
+               localStorage.setItem('ladys_users_list', JSON.stringify(newUsers));
+            }
+            setLoginInput(data.username);
+            alert(`Profile "${data.username}" imported successfully.`);
+          } else {
+             // Overwrite current
+             setWardrobe(data.wardrobe);
+             setInspiration(data.inspiration);
+             setProfile(data.profile);
+             setContext(data.context);
+             setSavedOutfits(data.savedOutfits);
+             alert("Data imported to current session.");
+          }
+        } else {
+          alert("Invalid file format.");
+        }
+      } catch (err) {
+        alert("Failed to parse file.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+
+  // --- Event Handlers (Same as before) ---
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -270,8 +364,60 @@ const App: React.FC = () => {
     setActiveTab('lookbook');
   };
 
-  // Get unique occasions for filter
   const uniqueOccasions = ['All', ...new Set(savedOutfits.map(o => o.occasionCategory))];
+
+  // --- Auth View ---
+
+  if (authMode === 'login') {
+    return (
+      <div className="min-h-screen bg-[#faf9f6] flex flex-col items-center justify-center p-6 text-stone-800">
+         <div className="max-w-md w-full bg-white rounded-[2.5rem] p-10 shadow-xl border border-stone-100 text-center">
+             <div className="mb-8">
+                <i className="fa-solid fa-gem text-5xl text-amber-600 mb-4 block"></i>
+                <h1 className="text-3xl font-serif font-bold italic text-amber-900">The Lady's</h1>
+                <p className="text-[10px] tracking-[0.3em] uppercase text-stone-400 font-bold mt-1">Wardrobe Stylist</p>
+             </div>
+             
+             <form onSubmit={handleLogin} className="space-y-4 mb-8">
+               <div className="relative">
+                 <input 
+                   type="text" 
+                   value={loginInput}
+                   onChange={(e) => setLoginInput(e.target.value)}
+                   placeholder="Enter your name or alias..." 
+                   className="w-full px-6 py-4 rounded-xl bg-stone-50 border border-stone-100 text-center font-serif text-lg focus:outline-none focus:border-amber-200 focus:bg-white transition-all"
+                   autoFocus
+                 />
+                 <i className="fa-solid fa-user absolute left-5 top-1/2 -translate-y-1/2 text-stone-300"></i>
+               </div>
+               <button type="submit" className="w-full py-4 bg-stone-900 text-white rounded-xl text-xs font-black uppercase tracking-[0.2em] hover:bg-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+                  {users.includes(loginInput.trim()) ? "Unlock Wardrobe" : "Create Personal Profile"}
+               </button>
+             </form>
+
+             <div className="border-t border-stone-100 pt-8 space-y-4">
+               {users.length > 0 && (
+                 <div className="flex flex-wrap gap-2 justify-center mb-6">
+                   {users.slice(0, 3).map(u => (
+                     <button key={u} onClick={() => loadUser(u)} className="px-3 py-1 bg-stone-50 rounded-full text-xs text-stone-500 hover:bg-stone-100 border border-stone-100">
+                       {u}
+                     </button>
+                   ))}
+                 </div>
+               )}
+               
+               <label className="block w-full py-3 border border-dashed border-stone-300 rounded-xl text-stone-400 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:border-amber-300 hover:text-amber-600 transition-all">
+                  Import Profile (.json)
+                  <input type="file" className="hidden" accept=".json" onChange={handleImportData} />
+               </label>
+             </div>
+         </div>
+         <p className="mt-8 text-[10px] text-stone-400 font-serif italic">Your data is stored locally on this device.</p>
+      </div>
+    );
+  }
+
+  // --- Main App View ---
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#faf9f6] text-stone-800">
@@ -285,6 +431,16 @@ const App: React.FC = () => {
         </div>
 
         <div className="space-y-2 flex-grow">
+          <div className="px-4 py-2 mb-4 bg-stone-50 rounded-lg flex items-center justify-between border border-stone-100">
+             <div className="flex items-center gap-2 overflow-hidden">
+                <div className="w-6 h-6 rounded-full bg-amber-200 flex items-center justify-center text-[10px] font-bold text-amber-900">
+                  {currentUser?.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-xs font-bold text-stone-600 truncate">{currentUser}</span>
+             </div>
+             <button onClick={handleLogout} title="Sign Out" className="text-stone-400 hover:text-red-400"><i className="fa-solid fa-arrow-right-from-bracket"></i></button>
+          </div>
+
           <button 
             onClick={() => setActiveTab('generator')}
             className={`w-full text-left px-4 py-3 rounded-lg transition-all flex items-center gap-3 ${activeTab === 'generator' ? 'bg-amber-50 text-amber-900 shadow-sm border border-amber-100' : 'text-stone-500 hover:bg-stone-50'}`}
@@ -457,9 +613,19 @@ const App: React.FC = () => {
           </div>
         ) : activeTab === 'identity' ? (
           <div className="max-w-4xl mx-auto">
-            <header className="mb-12">
-              <h2 className="text-4xl font-bold mb-2 font-serif">Aesthetic Identity</h2>
-              <p className="text-stone-500">Defining your permanent style DNA and architectural profile.</p>
+            <header className="mb-12 flex justify-between items-start">
+              <div>
+                <h2 className="text-4xl font-bold mb-2 font-serif">Aesthetic Identity</h2>
+                <p className="text-stone-500">Defining your permanent style DNA and architectural profile.</p>
+              </div>
+              <button 
+                onClick={handleExportData}
+                className="px-4 py-2 bg-stone-100 hover:bg-amber-100 text-stone-600 hover:text-amber-800 rounded-lg text-xs font-bold transition-all flex items-center gap-2"
+                title="Share Account Data"
+              >
+                <i className="fa-solid fa-download"></i>
+                Export Profile
+              </button>
             </header>
 
             <div className="grid lg:grid-cols-3 gap-8 mb-12">
@@ -611,7 +777,7 @@ const App: React.FC = () => {
           <div className="max-w-5xl mx-auto">
             <header className="mb-10 flex items-end justify-between">
               <div>
-                <span className="text-amber-600 font-black uppercase tracking-[0.4em] text-[10px] mb-2 block">{greeting}, My Lady</span>
+                <span className="text-amber-600 font-black uppercase tracking-[0.4em] text-[10px] mb-2 block">{greeting}, {currentUser}</span>
                 <h2 className="text-4xl font-bold mb-2 font-serif">Daily Style Ritual</h2>
               </div>
               <button onClick={() => setActiveTab('identity')} className="text-[10px] font-black uppercase bg-white px-5 py-2.5 rounded-full border border-stone-100 shadow-sm transition-all hover:bg-stone-50">

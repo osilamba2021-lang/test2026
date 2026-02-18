@@ -33,7 +33,7 @@ export interface StyleProfile {
   signatureColors: string;
   bodyType: string;
   height: string;
-  pinterestProfile?: string; // New: Persistent Pinterest link
+  pinterestProfile?: string;
   analysisPhoto?: string; // Base64
   aiAnalysis?: UserAnalysis;
 }
@@ -72,4 +72,24 @@ export interface StylingState {
   isGenerating: boolean;
   suggestions: OutfitSuggestion[] | null;
   error: string | null;
+}
+
+export interface DailyContext {
+  event: string;
+  weather: string;
+  location: string;
+  vibe: string;
+  color: string;
+  comfort: number;
+  pinterestUrl: string;
+}
+
+export interface UserData {
+  username: string;
+  wardrobe: ClothingItem[];
+  inspiration: InspirationImage[];
+  profile: StyleProfile;
+  context: DailyContext;
+  savedOutfits: SavedOutfit[];
+  lastActive: number;
 }
